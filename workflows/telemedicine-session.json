@@ -1,0 +1,140 @@
+{
+  "name": "Brainsait - Telemedicine Session Setup",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "telemedicine-setup",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook - Session Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "telemedicine-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.*, p.first_name as patient_first_name, p.last_name as patient_last_name, p.email as patient_email, p.phone as patient_phone, pr.first_name as provider_first_name, pr.last_name as provider_last_name, pr.email as provider_email FROM appointments a JOIN patients p ON a.patient_id = p.patient_id JOIN providers pr ON a.provider_id = pr.provider_id WHERE a.appointment_id = '={{$json.appointmentId}}' AND a.appointment_type = 'telemedicine'"
+      },
+      "name": "Get Appointment Details",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create Zoom meeting\nconst appointment = items[0].json;\n\nconst meetingData = {\n  topic: `Telemedicine Visit - ${appointment.patient_first_name} ${appointment.patient_last_name}`,\n  type: 2,\n  start_time: `${appointment.appointment_date}T${appointment.appointment_time}`,\n  duration: appointment.duration,\n  settings: {\n    host_video: true,\n    participant_video: true,\n    waiting_room: true,\n    join_before_host: false,\n    mute_upon_entry: true,\n    auto_recording: 'cloud'\n  }\n};\n\nreturn [{\n  json: {\n    ...appointment,\n    meetingData\n  }\n}];"
+      },
+      "name": "Prepare Meeting Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.zoom.us/v2/users/me/meetings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "method": "POST",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "={{$json.meetingData.topic}}"
+            },
+            {
+              "name": "type",
+              "value": "={{$json.meetingData.type}}"
+            },
+            {
+              "name": "start_time",
+              "value": "={{$json.meetingData.start_time}}"
+            },
+            {
+              "name": "duration",
+              "value": "={{$json.meetingData.duration}}"
+            }
+          ]
+        }
+      },
+      "name": "Create Zoom Meeting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "appointments",
+        "updateKey": "appointment_id",
+        "columns": "telemedicine_link,telemedicine_password,telemedicine_id"
+      },
+      "name": "Update Appointment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.patient_email}}",
+        "subject": "Your Telemedicine Appointment - Brainsait Healthcare",
+        "text": "Dear {{$json.patient_first_name}} {{$json.patient_last_name}},\n\nYour telemedicine appointment is scheduled:\n\nDate: {{$json.appointment_date}}\nTime: {{$json.appointment_time}}\nProvider: Dr. {{$json.provider_first_name}} {{$json.provider_last_name}}\n\nJoin Meeting:\n{{$json.join_url}}\n\nMeeting ID: {{$json.id}}\nPassword: {{$json.password}}\n\nPlease join 5 minutes before your scheduled time.\n\nTechnical Requirements:\n- Stable internet connection\n- Webcam and microphone\n- Updated browser (Chrome, Firefox, Safari)\n\nNeed help? Contact us at support@brainsait.health\n\nBest regards,\nBrainsait Healthcare Team"
+      },
+      "name": "Send Patient Instructions",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.provider_email}}",
+        "subject": "Telemedicine Appointment - {{$json.patient_first_name}} {{$json.patient_last_name}}",
+        "text": "Telemedicine appointment scheduled:\n\nPatient: {{$json.patient_first_name}} {{$json.patient_last_name}}\nPatient ID: {{$json.patient_id}}\nDate: {{$json.appointment_date}}\nTime: {{$json.appointment_time}}\n\nStart Meeting:\n{{$json.start_url}}\n\nMeeting ID: {{$json.id}}\n\nPatient Chart: https://brainsait.health/patients/{{$json.patient_id}}\n\nBrainsait Healthcare"
+      },
+      "name": "Notify Provider",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.patient_phone}}",
+        "message": "Your telemedicine appointment is {{$json.appointment_date}} at {{$json.appointment_time}}. Check your email for join link. - Brainsait Healthcare"
+      },
+      "name": "Send SMS Confirmation",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Session Request": {
+      "main": [[{"node": "Get Appointment Details", "type": "main", "index": 0}]]
+    },
+    "Get Appointment Details": {
+      "main": [[{"node": "Prepare Meeting Data", "type": "main", "index": 0}]]
+    },
+    "Prepare Meeting Data": {
+      "main": [[{"node": "Create Zoom Meeting", "type": "main", "index": 0}]]
+    },
+    "Create Zoom Meeting": {
+      "main": [[{"node": "Update Appointment", "type": "main", "index": 0}]]
+    },
+    "Update Appointment": {
+      "main": [[
+        {"node": "Send Patient Instructions", "type": "main", "index": 0},
+        {"node": "Notify Provider", "type": "main", "index": 0},
+        {"node": "Send SMS Confirmation", "type": "main", "index": 0}
+      ]]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["healthcare", "telemedicine", "appointments", "brainsait"]
+}

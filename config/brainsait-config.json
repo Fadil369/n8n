@@ -1,0 +1,65 @@
+{
+  "branding": {
+    "name": "Brainsait Healthcare Ecosystem",
+    "version": "1.0.0",
+    "company": "Brainsait",
+    "tagline": "Intelligent Healthcare Automation",
+    "supportEmail": "support@brainsait.health",
+    "website": "https://brainsait.health"
+  },
+  "features": {
+    "patientManagement": true,
+    "appointmentScheduling": true,
+    "medicalRecords": true,
+    "telemedicine": true,
+    "billing": true,
+    "analytics": true,
+    "messaging": true
+  },
+  "security": {
+    "hipaaCompliant": true,
+    "encryption": "AES-256",
+    "mfaEnabled": true,
+    "sessionTimeout": 900,
+    "passwordPolicy": {
+      "minLength": 12,
+      "requireUppercase": true,
+      "requireLowercase": true,
+      "requireNumbers": true,
+      "requireSpecialChars": true,
+      "expirationDays": 90
+    }
+  },
+  "integrations": {
+    "ehr": {
+      "epic": {
+        "enabled": false,
+        "fhirVersion": "R4"
+      },
+      "cerner": {
+        "enabled": false,
+        "fhirVersion": "R4"
+      }
+    },
+    "messaging": {
+      "sms": {
+        "provider": "twilio",
+        "enabled": true
+      },
+      "email": {
+        "provider": "sendgrid",
+        "enabled": true
+      },
+      "push": {
+        "provider": "firebase",
+        "enabled": true
+      }
+    }
+  },
+  "workflows": {
+    "defaultRetryCount": 3,
+    "defaultTimeout": 300,
+    "enableWebhooks": true,
+    "enableScheduling": true
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "name": "Brainsait - Patient Intake Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "patient-intake",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook - Patient Registration",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "patient-intake-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate patient data\nconst patientData = items[0].json;\n\nconst required = ['firstName', 'lastName', 'dateOfBirth', 'email', 'phone'];\nconst missing = required.filter(field => !patientData[field]);\n\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\n// Generate patient ID\npatientData.patientId = `PT${Date.now()}`;\npatientData.registrationDate = new Date().toISOString();\npatientData.status = 'pending_verification';\n\nreturn items.map(item => ({\n  json: patientData\n}));"
+      },
+      "name": "Validate & Process Patient Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "patients",
+        "columns": "patientId,firstName,lastName,dateOfBirth,email,phone,registrationDate,status"
+      },
+      "name": "Store Patient in Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.INSURANCE_VERIFY_API}}/verify",
+        "method": "POST",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "patientId",
+              "value": "={{$json.patientId}}"
+            },
+            {
+              "name": "insuranceNumber",
+              "value": "={{$json.insuranceNumber}}"
+            }
+          ]
+        }
+      },
+      "name": "Verify Insurance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.email}}",
+        "subject": "Welcome to Brainsait Healthcare",
+        "text": "Dear {{$json.firstName}} {{$json.lastName}},\n\nWelcome to Brainsait Healthcare! Your registration is complete.\n\nPatient ID: {{$json.patientId}}\n\nNext Steps:\n1. Complete your medical history form\n2. Upload insurance documents\n3. Schedule your first appointment\n\nBest regards,\nBrainsait Healthcare Team"
+      },
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.phone}}",
+        "message": "Welcome to Brainsait Healthcare! Your Patient ID: {{$json.patientId}}. Complete your profile at brainsait.health"
+      },
+      "name": "Send Welcome SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create patient portal account\nconst patientData = items[0].json;\n\nreturn items.map(item => ({\n  json: {\n    patientId: patientData.patientId,\n    email: patientData.email,\n    username: patientData.email,\n    temporaryPassword: Math.random().toString(36).slice(-12),\n    mustChangePassword: true,\n    createdAt: new Date().toISOString()\n  }\n}));"
+      },
+      "name": "Create Portal Account",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Patient Registration": {
+      "main": [[{"node": "Validate & Process Patient Data", "type": "main", "index": 0}]]
+    },
+    "Validate & Process Patient Data": {
+      "main": [[{"node": "Store Patient in Database", "type": "main", "index": 0}]]
+    },
+    "Store Patient in Database": {
+      "main": [[{"node": "Verify Insurance", "type": "main", "index": 0}]]
+    },
+    "Verify Insurance": {
+      "main": [[
+        {"node": "Send Welcome Email", "type": "main", "index": 0},
+        {"node": "Send Welcome SMS", "type": "main", "index": 0},
+        {"node": "Create Portal Account", "type": "main", "index": 0}
+      ]]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["healthcare", "patient-management", "brainsait"]
+}

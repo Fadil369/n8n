@@ -1,0 +1,45 @@
+{
+  "name": "brainsait-healthcare-ecosystem",
+  "version": "1.0.0",
+  "description": "Intelligent Healthcare Automation Platform built on N8n",
+  "main": "index.js",
+  "scripts": {
+    "start": "docker-compose up -d",
+    "stop": "docker-compose down",
+    "restart": "docker-compose restart",
+    "logs": "docker-compose logs -f",
+    "db:backup": "docker-compose exec postgres pg_dump -U brainsait brainsait_healthcare > backups/backup_$(date +%Y%m%d_%H%M%S).sql",
+    "db:restore": "docker-compose exec -T postgres psql -U brainsait brainsait_healthcare <",
+    "test": "echo 'No tests configured yet' && exit 0",
+    "lint": "eslint modules/ --ext .js",
+    "format": "prettier --write 'modules/**/*.js' 'workflows/**/*.json'"
+  },
+  "keywords": [
+    "healthcare",
+    "automation",
+    "n8n",
+    "workflow",
+    "HIPAA",
+    "EHR",
+    "patient-management",
+    "telemedicine",
+    "brainsait"
+  ],
+  "author": "Brainsait",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fadil369/N8n.git"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.50.0",
+    "prettier": "^3.0.3"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  }
+}

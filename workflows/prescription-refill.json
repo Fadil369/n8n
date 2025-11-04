@@ -1,0 +1,149 @@
+{
+  "name": "Brainsait - Prescription Refill Request",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "prescription-refill",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook - Refill Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "prescription-refill-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.*, pat.first_name, pat.last_name, pat.phone, pat.email, pr.first_name as provider_first_name, pr.last_name as provider_last_name FROM prescriptions p JOIN patients pat ON p.patient_id = pat.patient_id JOIN providers pr ON p.provider_id = pr.provider_id WHERE p.prescription_id = '={{$json.prescriptionId}}'"
+      },
+      "name": "Get Prescription Details",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.refills}}",
+              "operation": "larger",
+              "value2": 0
+            },
+            {
+              "value1": "={{$json.status}}",
+              "value2": "active"
+            }
+          ]
+        }
+      },
+      "name": "Check Refills Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "prescriptions",
+        "updateKey": "prescription_id",
+        "columns": "refills,last_refill_date"
+      },
+      "name": "Process Refill",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.PHARMACY_API}}/refill",
+        "method": "POST",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prescriptionId",
+              "value": "={{$json.prescription_id}}"
+            },
+            {
+              "name": "patientId",
+              "value": "={{$json.patient_id}}"
+            },
+            {
+              "name": "medicationName",
+              "value": "={{$json.medication_name}}"
+            }
+          ]
+        }
+      },
+      "name": "Send to Pharmacy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.email}}",
+        "subject": "Prescription Refill Approved - Brainsait Healthcare",
+        "text": "Dear {{$json.first_name}} {{$json.last_name}},\n\nYour prescription refill request has been approved:\n\nMedication: {{$json.medication_name}}\nDosage: {{$json.dosage}}\nPharmacy: {{$json.pharmacy_info.name}}\n\nYour prescription will be ready for pickup in 24 hours.\n\nRemaining Refills: {{$json.refills}}\n\nBest regards,\nBrainsait Healthcare Team"
+      },
+      "name": "Notify Patient - Approved",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.email}}",
+        "subject": "Prescription Refill Requires Provider Approval",
+        "text": "Dear {{$json.first_name}} {{$json.last_name}},\n\nYour prescription refill request requires provider approval as you have no remaining refills.\n\nMedication: {{$json.medication_name}}\n\nWe have notified your provider. You will receive an update within 24 hours.\n\nBest regards,\nBrainsait Healthcare Team"
+      },
+      "name": "Notify Patient - Pending",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.provider_email || 'provider@brainsait.health'}}",
+        "subject": "Prescription Refill Approval Needed - {{$json.first_name}} {{$json.last_name}}",
+        "text": "A patient requires prescription refill approval:\n\nPatient: {{$json.first_name}} {{$json.last_name}}\nPatient ID: {{$json.patient_id}}\nMedication: {{$json.medication_name}}\nDosage: {{$json.dosage}}\n\nNo refills remaining. Please review and approve/deny.\n\nAccess patient record: https://brainsait.health/patients/{{$json.patient_id}}"
+      },
+      "name": "Alert Provider",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Refill Request": {
+      "main": [[{"node": "Get Prescription Details", "type": "main", "index": 0}]]
+    },
+    "Get Prescription Details": {
+      "main": [[{"node": "Check Refills Available", "type": "main", "index": 0}]]
+    },
+    "Check Refills Available": {
+      "main": [
+        [{"node": "Process Refill", "type": "main", "index": 0}],
+        [
+          {"node": "Notify Patient - Pending", "type": "main", "index": 0},
+          {"node": "Alert Provider", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Process Refill": {
+      "main": [[{"node": "Send to Pharmacy", "type": "main", "index": 0}]]
+    },
+    "Send to Pharmacy": {
+      "main": [[{"node": "Notify Patient - Approved", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["healthcare", "prescriptions", "pharmacy", "brainsait"]
+}
