@@ -1,0 +1,99 @@
+{
+  "name": "Brainsait - Appointment Reminder Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "name": "Schedule - Hourly Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM appointments WHERE appointment_date >= NOW() AND appointment_date <= NOW() + INTERVAL '24 hours' AND reminder_sent = false"
+      },
+      "name": "Get Upcoming Appointments",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format appointment details\nconst appointments = items.map(item => {\n  const apt = item.json;\n  const aptDate = new Date(apt.appointment_date);\n  \n  return {\n    json: {\n      ...apt,\n      formattedDate: aptDate.toLocaleDateString('en-US', {\n        weekday: 'long',\n        year: 'numeric',\n        month: 'long',\n        day: 'numeric'\n      }),\n      formattedTime: aptDate.toLocaleTimeString('en-US', {\n        hour: '2-digit',\n        minute: '2-digit'\n      })\n    }\n  };\n});\n\nreturn appointments;"
+      },
+      "name": "Format Appointment Details",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.patient_email}}",
+        "subject": "Appointment Reminder - Brainsait Healthcare",
+        "text": "Dear {{$json.patient_name}},\n\nThis is a reminder about your upcoming appointment:\n\nDate: {{$json.formattedDate}}\nTime: {{$json.formattedTime}}\nProvider: {{$json.provider_name}}\nLocation: {{$json.location}}\n\nPlease arrive 15 minutes early for check-in.\n\nTo reschedule or cancel, please call us at (555) 123-4567 or visit brainsait.health\n\nBest regards,\nBrainsait Healthcare Team"
+      },
+      "name": "Send Email Reminder",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.patient_phone}}",
+        "message": "Reminder: Appointment on {{$json.formattedDate}} at {{$json.formattedTime}} with {{$json.provider_name}}. Reply CONFIRM to confirm or call (555) 123-4567. - Brainsait Healthcare"
+      },
+      "name": "Send SMS Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "appointments",
+        "updateKey": "appointment_id",
+        "columns": "reminder_sent"
+      },
+      "name": "Mark Reminder Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Schedule - Hourly Check": {
+      "main": [[{"node": "Get Upcoming Appointments", "type": "main", "index": 0}]]
+    },
+    "Get Upcoming Appointments": {
+      "main": [[{"node": "Format Appointment Details", "type": "main", "index": 0}]]
+    },
+    "Format Appointment Details": {
+      "main": [[
+        {"node": "Send Email Reminder", "type": "main", "index": 0},
+        {"node": "Send SMS Reminder", "type": "main", "index": 0}
+      ]]
+    },
+    "Send Email Reminder": {
+      "main": [[{"node": "Mark Reminder Sent", "type": "main", "index": 0}]]
+    },
+    "Send SMS Reminder": {
+      "main": [[{"node": "Mark Reminder Sent", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["healthcare", "appointments", "reminders", "brainsait"]
+}

@@ -1,0 +1,116 @@
+{
+  "name": "Brainsait - Lab Results Notification Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "lab-results",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook - Lab Results Ready",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "lab-results-webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.*, l.* FROM patients p JOIN lab_orders l ON p.patient_id = l.patient_id WHERE l.order_id = '={{$json.orderId}}'"
+      },
+      "name": "Get Patient & Lab Info",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check if results require immediate attention\nconst labData = items[0].json;\nconst criticalValues = {\n  'glucose': { min: 70, max: 140 },\n  'hemoglobin': { min: 12, max: 17 },\n  'wbc': { min: 4.5, max: 11 }\n};\n\nlabData.isCritical = false;\nlabData.criticalTests = [];\n\nif (labData.results && typeof labData.results === 'object') {\n  for (const [test, value] of Object.entries(labData.results)) {\n    if (criticalValues[test]) {\n      const range = criticalValues[test];\n      if (value < range.min || value > range.max) {\n        labData.isCritical = true;\n        labData.criticalTests.push({\n          test,\n          value,\n          range\n        });\n      }\n    }\n  }\n}\n\nreturn [{ json: labData }];"
+      },
+      "name": "Analyze Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.isCritical}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Is Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.provider_email}}",
+        "subject": "URGENT: Critical Lab Results - {{$json.patient_name}}",
+        "text": "CRITICAL LAB ALERT\n\nPatient: {{$json.patient_name}}\nPatient ID: {{$json.patient_id}}\n\nCritical Test Results:\n{{$json.criticalTests}}\n\nImmediate review required.\n\n- Brainsait Healthcare System"
+      },
+      "name": "Alert Provider - Critical",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "to": "={{$json.patient_email}}",
+        "subject": "Your Lab Results are Available - Brainsait Healthcare",
+        "text": "Dear {{$json.patient_name}},\n\nYour lab results are now available. Please log in to your patient portal at brainsait.health to view your results.\n\nYour healthcare provider will review these results and contact you if any action is needed.\n\nBest regards,\nBrainsait Healthcare Team"
+      },
+      "name": "Notify Patient - Normal",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "lab_orders",
+        "updateKey": "order_id",
+        "columns": "notification_sent,notification_date"
+      },
+      "name": "Update Notification Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Lab Results Ready": {
+      "main": [[{"node": "Get Patient & Lab Info", "type": "main", "index": 0}]]
+    },
+    "Get Patient & Lab Info": {
+      "main": [[{"node": "Analyze Results", "type": "main", "index": 0}]]
+    },
+    "Analyze Results": {
+      "main": [[{"node": "Is Critical?", "type": "main", "index": 0}]]
+    },
+    "Is Critical?": {
+      "main": [
+        [{"node": "Alert Provider - Critical", "type": "main", "index": 0}],
+        [{"node": "Notify Patient - Normal", "type": "main", "index": 0}]
+      ]
+    },
+    "Alert Provider - Critical": {
+      "main": [[{"node": "Update Notification Status", "type": "main", "index": 0}]]
+    },
+    "Notify Patient - Normal": {
+      "main": [[{"node": "Update Notification Status", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["healthcare", "lab-results", "notifications", "brainsait"]
+}
